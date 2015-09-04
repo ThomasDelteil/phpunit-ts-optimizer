@@ -1,0 +1,173 @@
+#!/usr/bin/env python
+import cli.log
+import cli.app
+import json
+from lxml import etree
+import lxml
+
+
+class Test:
+    def __init__(self, path, time):
+        self.path = path
+        self.time = time
+    def __repr__(self):
+        return self.path + ':' + str(self.time)
+
+class TestSuite:
+    def __init__(self, name):
+        self.name = name
+        self.time = 0
+        self.paths = []
+
+    def __repr__(self): 
+        return 'name: ' + self.name + ', time:' + str(self.time) 
+
+    def addTest(self, test):
+        self.time += test.time
+        self.paths.append(test.path)
+
+def loadLog(source):
+    fh = open(source,"r")
+    text = fh.read()
+    if not (type(text) is str ):
+        raise ValueError('The source '+source+'is either invalid or empty')
+
+    # The current json output of phpunit is unfortunately not valid json
+    return json.loads('[' + text.replace('}{', '},{') + ']')
+
+def loadConfig(config):
+    parser = etree.XMLParser(remove_blank_text=True)
+    tree = etree.parse(config, parser)
+    return tree
+
+def aggregateAndSort(data, prefix):
+    # Filter down 'test' events 
+    data = filter(lambda x: x['event'] == 'test', data)
+    
+    # Aggregate by path
+    paths = {}
+    for point in data:
+        if (point['suite'] != ''):
+            path = point['suite']
+        elif (point['test'] != ''):
+            path = point['test']
+        filePath = suiteToPath(prefix, path)
+        if filePath is None:
+            raise ValueError('Could not generate filePath')
+        if (filePath in paths):
+            paths[filePath].time += point['time']
+        else:
+            paths[filePath] = Test(filePath, point['time'])
+
+    paths = paths.values()
+    paths = sorted(paths, key=lambda x: x.time, reverse=True)
+
+    return paths
+
+def suiteToPath(prefix, suite):
+    sep = '::'
+    suite = suite.split(sep, 1)[0]
+    if (suite == ''):
+        return None
+    return prefix + suite.replace('\\', '/') + '.php'
+
+
+def buildTestSuites(tests, generatedName, number):
+    suites = []
+    for i in range(number):
+        suites.append(TestSuite(generatedName + str(i)))
+
+    for test in tests:
+        suites[0].addTest(test)
+        suites = sorted(suites, key=lambda x: x.time)
+
+    return suites
+
+def buildExcludedTestSuite(tests):
+    suite = TestSuite('exluded')
+    for test in tests:
+        suite.addTest(test)
+    return suite
+
+def addGeneratedTestSuites(doc, testSuites, excludedTestSuite, initialTestSuiteName):
+
+    if initialTestSuiteName == "initialTestSuiteName":
+        initialTestSuite = doc.xpath("//testsuite")
+    else:
+        print("false")
+        initialTestSuite = doc.xpath("//testsuite[@name='"+initialTestSuiteName+"']")
+
+    if (len(initialTestSuite) != 1):
+        raise ValueError('The initialTestSuiteName is incorrect: '+initialTestSuiteName)
+
+
+    for excludedTest in excludedTestSuite.paths:
+        node = lxml.etree.Element("exclude")
+        node.text = excludedTest
+        initialTestSuite[0].insert(0, node)
+
+    # Inserting the testsuite in the testsuites node
+    testSuitesNode = doc.find('testsuites')
+    for testSuite in testSuites:
+        suiteNode = lxml.etree.Element("testsuite", attrib={'name': testSuite.name})
+        for path in testSuite.paths:
+            node = lxml.etree.Element("file")
+            node.text = path
+            suiteNode.insert(0, node)
+        testSuitesNode.insert(0, suiteNode)
+    
+    return doc
+
+
+def writeGeneratedConfig(xmlConfig, filePath):
+    f = open(filePath, 'w')
+    f.write(lxml.etree.tostring(xmlConfig, pretty_print=True))
+    f.close()
+
+# Test Suite Generator (tsg)
+@cli.log.LoggingApp
+def tsg(app):
+    if (app.params.suitesNumber <= 0):
+        raise ValueError('The number of test suites is too low')
+
+    app.log.debug("Loading output data from" + app.params.source)
+    # Load the data from json
+    testsLog = loadLog(app.params.source)
+
+    # Load the current config
+    app.log.debug("Loading config template from" + app.params.template)
+    configXml   = loadConfig(app.params.template)
+
+    # Sanitize the data
+    app.log.debug("Sanitizing the data")
+    tests = aggregateAndSort(testsLog, app.params.relativePath)
+
+    # Use the data to create the groups
+    app.log.debug("Building semi-optimal groups")
+    testSuites   = buildTestSuites(tests, app.params.generated, app.params.suitesNumber)
+    print(testSuites)
+
+    # Build the group which should be excluded
+    app.log.debug("Building the exlucded test suite")
+    excluded = buildExcludedTestSuite(tests)
+
+    # Write the generated test suites
+    app.log.debug("Including the generated test suites to the config")
+    xmlConfig = addGeneratedTestSuites(configXml, testSuites, excluded, app.params.initialTestSuiteName)
+
+    # Write xml tree to disk
+    app.log.debug("Write new file to disk: " + app.params.output)
+    writeGeneratedConfig(xmlConfig, app.params.output)
+
+
+tsg.add_param("-j", "--sourceJson", dest="source", help="PHPUnit JSON source", type=str)
+tsg.add_param("-t", "--sourceConfig", dest="template", help="PHPUnit .xml config file to use as template, it should have a testSuite with name='Generated'", type=str)
+tsg.add_param("-i", "--initialTestSuiteName", dest="initialTestSuiteName", help="Initial test suite Name (to add the excluded file path to, allowing for subsequent tests to be added)", default="initialTestSuiteName", type=str)
+tsg.add_param("-a", "--generatedSuiteSuffix", dest="generated", help="Prefix for the generated test suites", default="Generated_", type=str)
+tsg.add_param("-r", "--testRelativePath", dest="relativePath", help="Relative Path from your config file to your test folder, build/config.xml and tests/ requires ../tests", default="../tests/", type=str)
+tsg.add_param("-n", "--suitesNumber", dest="suitesNumber", help="Number of suites to create", default=2, type=int)
+tsg.add_param("-o", "--output", dest="output", help="Output file", default="phpunit_generated.xml", type=str)
+
+if __name__ == "__main__":
+    tsg.run()
+
