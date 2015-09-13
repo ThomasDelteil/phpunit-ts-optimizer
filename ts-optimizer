@@ -4,14 +4,16 @@ import cli.app
 import json
 from lxml import etree
 import lxml
+import os
 
 
 class Test:
-    def __init__(self, path, time):
+    def __init__(self, path, time, suite):
         self.path = path
         self.time = float(time)
+        self.suite = suite
     def __repr__(self):
-        return self.path + ':' + str(self.time)
+        return self.path + ':' + str(self.time)+ ', suite:' + str(self.suite)
 
 class TestSuite:
     def __init__(self, name):
@@ -39,18 +41,24 @@ def loadConfig(config):
     tree = etree.parse(config, parser)
     return tree
 
-def aggregateAndSort(data, prefix):
+def aggregateAndSort(data):
+
+    #remove the root path
+    root = os.getcwd()
     
     # Aggregate by path
     paths = {}
     for point in data:
-        filePath = point.attrib['file']
-        if filePath is None:
-            raise ValueError('Could not generate filePath')
+        if (root in point.attrib['file']):
+            filePath = point.attrib['file'].replace(root,'.')
+            suite = point.getparent().attrib['name']
+        else:
+            raise ValueError('You need to run the function at the root of your project')
+
         if (filePath in paths):
             paths[filePath].time += float(point.attrib['time'])
         else:
-            paths[filePath] = Test(filePath, point.attrib['time'])
+            paths[filePath] = Test(filePath, point.attrib['time'], suite)
 
     paths = paths.values()
     paths = sorted(paths, key=lambda x: x.time, reverse=True)
@@ -59,8 +67,9 @@ def aggregateAndSort(data, prefix):
 
 def buildTestSuites(tests, generatedName, number):
     suites = []
+
     for i in range(number):
-        suites.append(TestSuite(generatedName + str(i)))
+        suites.append(TestSuite(str(i) + generatedName))
 
     for test in tests:
         suites[0].addTest(test)
@@ -68,28 +77,8 @@ def buildTestSuites(tests, generatedName, number):
 
     return suites
 
-def buildExcludedTestSuite(tests):
-    suite = TestSuite('exluded')
-    for test in tests:
-        suite.addTest(test)
-    return suite
 
-def addGeneratedTestSuites(doc, testSuites, excludedTestSuite, initialTestSuiteName):
-
-    if initialTestSuiteName == "initialTestSuiteName":
-        initialTestSuite = doc.xpath("//testsuite")
-    else:
-        print("false")
-        initialTestSuite = doc.xpath("//testsuite[@name='"+initialTestSuiteName+"']")
-
-    if (len(initialTestSuite) != 1):
-        raise ValueError('The initialTestSuiteName is incorrect: '+initialTestSuiteName)
-
-
-    for excludedTest in excludedTestSuite.paths:
-        node = lxml.etree.Element("exclude")
-        node.text = excludedTest
-        initialTestSuite[0].insert(0, node)
+def addGeneratedTestSuites(doc, testSuites, tests):
 
     # Inserting the testsuite in the testsuites node
     testSuitesNode = doc.find('testsuites')
@@ -100,9 +89,16 @@ def addGeneratedTestSuites(doc, testSuites, excludedTestSuite, initialTestSuiteN
             node.text = path
             suiteNode.insert(0, node)
         testSuitesNode.insert(0, suiteNode)
+
+    for test in tests:
+        suite = doc.xpath("//testsuite[@name='"+test.suite+"']")
+        if (len(suite) != 1):
+            raise ValueError("Error with suite "+test.suite)
+        node = lxml.etree.Element("exclude")
+        node.text = test.path
+        suite[0].insert(0, node)
     
     return doc
-
 
 def writeGeneratedConfig(xmlConfig, filePath):
     f = open(filePath, 'w')
@@ -125,20 +121,16 @@ def tsg(app):
 
     # Sanitize the data
     app.log.debug("Sanitizing the data")
-    tests = aggregateAndSort(testsLog, app.params.relativePath)
+    tests = aggregateAndSort(testsLog)
 
     # Use the data to create the groups
     app.log.debug("Building semi-optimal groups")
     testSuites   = buildTestSuites(tests, app.params.generated, app.params.suitesNumber)
     print(testSuites)
 
-    # Build the group which should be excluded
-    app.log.debug("Building the exlucded test suite")
-    excluded = buildExcludedTestSuite(tests)
-
     # Write the generated test suites
     app.log.debug("Including the generated test suites to the config")
-    xmlConfig = addGeneratedTestSuites(configXml, testSuites, excluded, app.params.initialTestSuiteName)
+    xmlConfig = addGeneratedTestSuites(configXml, testSuites, tests)
 
     # Write xml tree to disk
     app.log.debug("Write new file to disk: " + app.params.output)
@@ -147,9 +139,7 @@ def tsg(app):
 
 tsg.add_param("-j", "--sourceJunit", dest="source", help="PHPUnit JUNIT source", type=str)
 tsg.add_param("-t", "--sourceConfig", dest="template", help="PHPUnit .xml config file to use as template, it should have a testSuite with name='Generated'", type=str)
-tsg.add_param("-i", "--initialTestSuiteName", dest="initialTestSuiteName", help="Initial test suite Name (to add the excluded file path to, allowing for subsequent tests to be added)", default="initialTestSuiteName", type=str)
-tsg.add_param("-a", "--generatedSuiteSuffix", dest="generated", help="Prefix for the generated test suites", default="Generated_", type=str)
-tsg.add_param("-r", "--testRelativePath", dest="relativePath", help="Relative Path from your config file to your test folder, build/config.xml and tests/ requires ../tests", default="../tests/", type=str)
+tsg.add_param("-a", "--generatedSuiteSuffix", dest="generated", help="Prefix for the generated test suites", default="_Generated", type=str)
 tsg.add_param("-n", "--suitesNumber", dest="suitesNumber", help="Number of suites to create", default=2, type=int)
 tsg.add_param("-o", "--output", dest="output", help="Output file", default="phpunit_generated.xml", type=str)
 
