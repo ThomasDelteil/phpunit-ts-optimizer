@@ -3,8 +3,7 @@ Python Command line tool to split one test suite in N suites in a semi-optimal m
 
 ```
 usage: tsg [-h] [-l LOGFILE] [-q] [-s] [-v] [-j SOURCE] [-t TEMPLATE]
-           [-i INITIALTESTSUITENAME] [-a GENERATED] [-r RELATIVEPATH]
-           [-n SUITESNUMBER] [-o OUTPUT]
+           [-a GENERATED] [-n SUITESNUMBER] [-o OUTPUT]
 
 optional arguments:
   -h, --help            show this help message and exit
@@ -13,19 +12,12 @@ optional arguments:
   -q, --quiet           decrease the verbosity
   -s, --silent          only log warnings
   -v, --verbose         raise the verbosity
-  -j SOURCE, --sourceJson SOURCE
-                        PHPUnit --log-json output
+  -j SOURCE, --sourceJunit SOURCE
+                        PHPUnit JUNIT source
   -t TEMPLATE, --sourceConfig TEMPLATE
-                        PHPUnit .xml config file to use as template, it should
-                        contain at least one test suite
-  -i INITIALTESTSUITENAME, --initialTestSuiteName INITIALTESTSUITENAME
-                        Initial test suite Name (to add the excluded file path
-                        to, allowing for subsequent tests to be added)
+                        PHPUnit .xml config file to use as template
   -a GENERATED, --generatedSuiteSuffix GENERATED
-                        Prefix for the generated test suites
-  -r RELATIVEPATH, --testRelativePath RELATIVEPATH
-                        Relative Path from your config file to your test
-                        folder, build/config.xml and tests/ requires ../tests
+                        Suffix for the generated test suites
   -n SUITESNUMBER, --suitesNumber SUITESNUMBER
                         Number of suites to create
   -o OUTPUT, --output OUTPUT
@@ -40,6 +32,7 @@ optional arguments:
 # Examples
 
 # Usage
+```ts-optimizer -j output.xml -t phpunit.xml.dist -n 4 -o phpunit_generated_4.xml```
 
 # Limitations
 
