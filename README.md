@@ -1,5 +1,5 @@
 # phpunit-ts-optimizer
-Python Command line tool to split one test suite in N suites in a semi-optimal manner based on --log-json output of phpunit
+Python Command line tool to split one test suite in N suites in a semi-optimal manner based on --log-junit output of phpunit
 
 ```
 usage: tsg [-h] [-l LOGFILE] [-q] [-s] [-v] [-j SOURCE] [-t TEMPLATE]
