@@ -32,6 +32,10 @@ optional arguments:
                         Output file
 ```
 
+# Dependencies
+`pip install lxml`
+`pip install pyCLI`
+
 # Examples
 
 # Usage
