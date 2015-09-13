@@ -9,7 +9,7 @@ import lxml
 class Test:
     def __init__(self, path, time):
         self.path = path
-        self.time = time
+        self.time = float(time)
     def __repr__(self):
         return self.path + ':' + str(self.time)
 
@@ -23,17 +23,16 @@ class TestSuite:
         return 'name: ' + self.name + ', time:' + str(self.time) 
 
     def addTest(self, test):
-        self.time += test.time
+        self.time += float(test.time)
         self.paths.append(test.path)
 
 def loadLog(source):
-    fh = open(source,"r")
-    text = fh.read()
-    if not (type(text) is str ):
-        raise ValueError('The source '+source+'is either invalid or empty')
+    parser = etree.XMLParser(remove_blank_text=True)
+    doc = etree.parse(source, parser)
+    suites = doc.xpath("//testsuite")
+    suites = filter(lambda x: "file" in x.attrib, suites)
+    return suites
 
-    # The current json output of phpunit is unfortunately not valid json
-    return json.loads('[' + text.replace('}{', '},{') + ']')
 
 def loadConfig(config):
     parser = etree.XMLParser(remove_blank_text=True)
@@ -41,36 +40,22 @@ def loadConfig(config):
     return tree
 
 def aggregateAndSort(data, prefix):
-    # Filter down 'test' events 
-    data = filter(lambda x: x['event'] == 'test', data)
     
     # Aggregate by path
     paths = {}
     for point in data:
-        if (point['suite'] != ''):
-            path = point['suite']
-        elif (point['test'] != ''):
-            path = point['test']
-        filePath = suiteToPath(prefix, path)
+        filePath = point.attrib['file']
         if filePath is None:
             raise ValueError('Could not generate filePath')
         if (filePath in paths):
-            paths[filePath].time += point['time']
+            paths[filePath].time += float(point.attrib['time'])
         else:
-            paths[filePath] = Test(filePath, point['time'])
+            paths[filePath] = Test(filePath, point.attrib['time'])
 
     paths = paths.values()
     paths = sorted(paths, key=lambda x: x.time, reverse=True)
 
     return paths
-
-def suiteToPath(prefix, suite):
-    sep = '::'
-    suite = suite.split(sep, 1)[0]
-    if (suite == ''):
-        return None
-    return prefix + suite.replace('\\', '/') + '.php'
-
 
 def buildTestSuites(tests, generatedName, number):
     suites = []
@@ -160,7 +145,7 @@ def tsg(app):
     writeGeneratedConfig(xmlConfig, app.params.output)
 
 
-tsg.add_param("-j", "--sourceJson", dest="source", help="PHPUnit JSON source", type=str)
+tsg.add_param("-j", "--sourceJunit", dest="source", help="PHPUnit JUNIT source", type=str)
 tsg.add_param("-t", "--sourceConfig", dest="template", help="PHPUnit .xml config file to use as template, it should have a testSuite with name='Generated'", type=str)
 tsg.add_param("-i", "--initialTestSuiteName", dest="initialTestSuiteName", help="Initial test suite Name (to add the excluded file path to, allowing for subsequent tests to be added)", default="initialTestSuiteName", type=str)
 tsg.add_param("-a", "--generatedSuiteSuffix", dest="generated", help="Prefix for the generated test suites", default="Generated_", type=str)
