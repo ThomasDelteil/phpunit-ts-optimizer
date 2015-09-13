@@ -34,6 +34,7 @@ optional arguments:
 
 # Dependencies
 `pip install lxml`
+
 `pip install pyCLI`
 
 # Examples
