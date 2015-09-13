@@ -138,8 +138,8 @@ def tsg(app):
 
 
 tsg.add_param("-j", "--sourceJunit", dest="source", help="PHPUnit JUNIT source", type=str)
-tsg.add_param("-t", "--sourceConfig", dest="template", help="PHPUnit .xml config file to use as template, it should have a testSuite with name='Generated'", type=str)
-tsg.add_param("-a", "--generatedSuiteSuffix", dest="generated", help="Prefix for the generated test suites", default="_Generated", type=str)
+tsg.add_param("-t", "--sourceConfig", dest="template", help="PHPUnit .xml config file to use as template", type=str)
+tsg.add_param("-a", "--generatedSuiteSuffix", dest="generated", help="Suffix for the generated test suites", default="_Generated", type=str)
 tsg.add_param("-n", "--suitesNumber", dest="suitesNumber", help="Number of suites to create", default=2, type=int)
 tsg.add_param("-o", "--output", dest="output", help="Output file", default="phpunit_generated.xml", type=str)
 
